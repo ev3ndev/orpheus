@@ -1,0 +1,7 @@
+{
+    "clients": {
+        "c1": "http://localhost:7476/proxy/<qui client proxy api key, e.g. below>",
+        "c2": "http://localhost:7476/proxy/00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+        "c3": "You can also use a qbittorrent url directly, but orpheus does not currently support authentication with username and password."
+    }
+}
