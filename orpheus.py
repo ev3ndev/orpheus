@@ -61,7 +61,7 @@ def calculate_score(downloaded, uploaded, seeding_time, last_activity):
     seeding_time_score = (max(seeding_time / 86400, 0.01)) ** 0.75
 
     time_since_activity = (current_ts - last_activity) / 86400
-    last_activity_score = (max(time_since_activity, 0)) ** 1.5
+    last_activity_score = (max(time_since_activity, 0)) ** 1.3
         
     ratio_score = (uploaded / max(downloaded, 1)) * 100
     return (ratio_score / seeding_time_score) - last_activity_score
@@ -82,8 +82,19 @@ def process_torrents(torrents, deltas):
         effective_upload = deltas.get(info_hash, uploaded)
 
         torrent["score"] = calculate_score(effective_downloaded, effective_upload, seeding_time, last_activity)
+        torrent["ratio_30d"] = effective_upload / effective_downloaded
 
         TOTAL_UPLOAD.labels(torrent_name=name, hash=info_hash).set(uploaded)
+
+
+def get_torrent_logline(current_time, torrent):
+    score = f"{bcolors.OKCYAN}{torrent['score']:.0f} {bcolors.OKBLUE}points{bcolors.ENDC}"
+    size = f"{bcolors.OKCYAN}{torrent['total_size'] / (1024**3):.0f} GiB {bcolors.OKBLUE}size{bcolors.ENDC}"
+    ratio = f"{bcolors.OKCYAN}{torrent['ratio']:.1f} {bcolors.OKBLUE}all-time{bcolors.ENDC}"
+    ratio_30d = f"{bcolors.OKCYAN}{torrent['ratio_30d']:.1f} {bcolors.OKBLUE}30 day{bcolors.ENDC}"
+    last_activity = f"{bcolors.OKCYAN}{(current_time - torrent["last_activity"]) / 86400:.0f}d {bcolors.OKBLUE}last active{bcolors.ENDC}"
+    seeding_time = f"{bcolors.OKCYAN}{torrent['seeding_time'] / 86400:.0f}d {bcolors.OKBLUE}seeding time{bcolors.ENDC}"
+    return f"    {bcolors.OKBLUE}({bcolors.ENDC}{score}{bcolors.OKBLUE}, {size}{bcolors.OKBLUE}, {ratio}{bcolors.OKBLUE}, {ratio_30d}{bcolors.OKBLUE}, {last_activity}{bcolors.OKBLUE}, {seeding_time}{bcolors.OKBLUE}){bcolors.ENDC}"
 
 
 def manage_disk_space(torrents):
@@ -91,15 +102,17 @@ def manage_disk_space(torrents):
 
     limit = total * 0.2
     if free >= limit:
-        logging.info(f"Disk limit -- {bcolors.OKGREEN}{used / (total - limit) * 100:>6.2f}%{bcolors.ENDC} -- {bcolors.OKCYAN}({(free - limit) / (1024**3):.0f} GB remaining){bcolors.ENDC}")
+        logging.info(f"Disk limit -- {bcolors.OKGREEN}{used / (total - limit) * 100:>6.2f}%{bcolors.ENDC} -- {bcolors.OKBLUE}({bcolors.OKCYAN}{(free - limit) / (1024**3):.0f} GiB {bcolors.OKBLUE}remaining){bcolors.ENDC}")
         return
 
     required = limit - free
-    logging.info(f"Disk limit -- {bcolors.WARNING}{used / (total - limit) * 100:>6.2f}%{bcolors.ENDC} -- {bcolors.WARNING}({(required / (1024**3)):.0f} GB required){bcolors.ENDC}")
+    logging.info(f"Disk limit -- {bcolors.WARNING}{used / (total - limit) * 100:>6.2f}%{bcolors.ENDC} -- {bcolors.WARNING}({(required / (1024**3)):.0f} GiB required){bcolors.ENDC}")
 
     aleady_tagged = 0
     tagged = 0
     reclaimed = 0
+
+    current_time = time.time()
 
     for torrent in torrents:
         if required <= 0:
@@ -115,7 +128,7 @@ def manage_disk_space(torrents):
             logging.info(f"Already tagged")
             logging.info(f"    {torrent['client']} - {torrent['category']} - {torrent['tags']}")
             logging.info(f"    {torrent['name']}")
-            logging.info(f"    {bcolors.OKCYAN}({torrent['score']:.0f} points, {torrent['total_size'] / (1024**3):.0f} GB){bcolors.ENDC}")
+            logging.info(get_torrent_logline(current_time, torrent))
             continue
 
         qbt = CLIENTS[torrent["client"]]
@@ -126,9 +139,9 @@ def manage_disk_space(torrents):
         logging.info(f"Tagged")
         logging.info(f"    {torrent['client']} - {torrent['category']} - {torrent['tags']}")
         logging.info(f"    {torrent['name']}")
-        logging.info(f"    {bcolors.OKCYAN}({torrent['score']:.0f} points, {torrent['total_size'] / (1024**3):.0f} GB){bcolors.ENDC}")
+        logging.info(get_torrent_logline(current_time, torrent))
 
-    logging.info(f"Found {aleady_tagged} already tagged torrents and tagged {tagged} new torrents to be removed. {reclaimed / (1024**3):.0f} GB to be reclaimed.")
+    logging.info(f"Found {aleady_tagged} already tagged torrents and tagged {tagged} new torrents to be removed. {reclaimed / (1024**3):.0f} GiB to be reclaimed.")
 
 
 def fetch_metrics():
@@ -144,7 +157,7 @@ def fetch_metrics():
                 met_torrents_count += 1
                 met_torrents_size += torrent["total_size"]
 
-    logging.info(f"Fetched {len(torrents):>6} torrents  {bcolors.OKCYAN}({met_torrents_count} met, {met_torrents_size / (1024**3):.0f} GB reclaimable){bcolors.ENDC}")
+    logging.info(f"Fetched {len(torrents):>6} torrents  {bcolors.OKBLUE}({bcolors.OKCYAN}{met_torrents_count} {bcolors.OKBLUE}met, {bcolors.OKCYAN}{met_torrents_size / (1024**3):.0f} GiB {bcolors.OKBLUE}reclaimable){bcolors.ENDC}")
     
     full_history_hashes = set()
     results_history = query_prometheus('torrent_total_upload_bytes offset 30d')
@@ -167,7 +180,7 @@ def fetch_metrics():
     d7 = len(query_prometheus('torrent_total_upload_bytes offset 7d')) - d30 - d28 - d21 - d14
     d0 = len(query_prometheus('torrent_total_upload_bytes')) - d30 - d28 - d21 - d14 - d7
 
-    logging.info(f"Fetched {len(deltas):>6} deltas    {bcolors.OKCYAN}({d28} >28d, {d21} >21d, {d14} >14d, {d7} >7d, {d0} <7d){bcolors.ENDC}")
+    logging.info(f"Fetched {len(deltas):>6} deltas    {bcolors.OKBLUE}({bcolors.OKCYAN}{d28} {bcolors.OKBLUE}>28d, {bcolors.OKCYAN}{d21} {bcolors.OKBLUE}>21d, {bcolors.OKCYAN}{d14} {bcolors.OKBLUE}>14d, {bcolors.OKCYAN}{d7} {bcolors.OKBLUE}>7d, {bcolors.OKCYAN}{d0} {bcolors.OKBLUE}<7d){bcolors.ENDC}")
     
     process_torrents(torrents, deltas)
 
