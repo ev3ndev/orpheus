@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /var/log/supervisor
 
 COPY prometheus.yml /etc/prometheus/prometheus.yml
+COPY rules.yml /etc/prometheus/rules.yml
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

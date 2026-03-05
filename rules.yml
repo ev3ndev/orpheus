@@ -1,0 +1,6 @@
+groups:
+  - name: torrent_recording_rules
+    interval: 5m
+    rules:
+      - record: torrent_upload_increase_30d
+        expr: torrent_total_upload_bytes - torrent_total_upload_bytes offset 30d
