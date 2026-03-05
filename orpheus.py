@@ -159,14 +159,9 @@ def fetch_metrics():
 
     logging.info(f"Fetched {len(torrents):>6} torrents  {bcolors.OKBLUE}({bcolors.OKCYAN}{met_torrents_count} {bcolors.OKBLUE}met, {bcolors.OKCYAN}{met_torrents_size / (1024**3):.0f} GiB {bcolors.OKBLUE}reclaimable){bcolors.ENDC}")
 
-    deltas = {}
-    results = query_prometheus('torrent_upload_increase_30d')
-    for item in results:
-        info_hash = item['metric'].get('hash')
-        value = float(item['value'][1])
-        deltas[info_hash] = value
+    deltas = {item['metric'].get('hash'): float(item['value'][1]) for item in query_prometheus('torrent_upload_increase_30d')}
 
-    d30 = len(results)
+    d30 = len(deltas)
     d28 = len(query_prometheus('torrent_total_upload_bytes offset 28d')) - d30
     d21 = len(query_prometheus('torrent_total_upload_bytes offset 21d')) - d30 - d28
     d14 = len(query_prometheus('torrent_total_upload_bytes offset 14d')) - d30 - d28 - d21
