@@ -42,6 +42,25 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 
+def label(value, label):
+    return f"{bcolors.OKCYAN}{value} {bcolors.OKBLUE}{label}{bcolors.ENDC}"
+
+
+def brackets(*items):
+    joined = f"{bcolors.OKBLUE}, ".join(items)
+    return f"{bcolors.OKBLUE}({bcolors.ENDC}{joined}{bcolors.OKBLUE}){bcolors.ENDC}"
+
+
+def get_torrent_logline(current_time, torrent):
+    score = label(f"{torrent['score']:.0f}", "points")
+    size = label(f"{torrent['total_size'] / (1024**3):.0f} GiB", "size")
+    ratio = label(f"{torrent['ratio']:.1f}", "all-time")
+    ratio_30d = label(f"{torrent['ratio_30d']:.1f}", "30 day")
+    last_activity = label(f"{(current_time - torrent['last_activity']) / 86400:.0f}d", "last active")
+    seeding_time = label(f"{torrent['seeding_time'] / 86400:.0f}d", "seeding time")
+    return f"    {brackets(score, size, ratio, ratio_30d, last_activity, seeding_time)}"
+
+
 def query_prometheus(query):
     try:
         response = requests.get(f"{METRICS_URL}/api/v1/query", params={"query": query})
@@ -87,22 +106,13 @@ def process_torrents(torrents, deltas):
         TOTAL_UPLOAD.labels(torrent_name=name, hash=info_hash).set(uploaded)
 
 
-def get_torrent_logline(current_time, torrent):
-    score = f"{bcolors.OKCYAN}{torrent['score']:.0f} {bcolors.OKBLUE}points{bcolors.ENDC}"
-    size = f"{bcolors.OKCYAN}{torrent['total_size'] / (1024**3):.0f} GiB {bcolors.OKBLUE}size{bcolors.ENDC}"
-    ratio = f"{bcolors.OKCYAN}{torrent['ratio']:.1f} {bcolors.OKBLUE}all-time{bcolors.ENDC}"
-    ratio_30d = f"{bcolors.OKCYAN}{torrent['ratio_30d']:.1f} {bcolors.OKBLUE}30 day{bcolors.ENDC}"
-    last_activity = f"{bcolors.OKCYAN}{(current_time - torrent["last_activity"]) / 86400:.0f}d {bcolors.OKBLUE}last active{bcolors.ENDC}"
-    seeding_time = f"{bcolors.OKCYAN}{torrent['seeding_time'] / 86400:.0f}d {bcolors.OKBLUE}seeding time{bcolors.ENDC}"
-    return f"    {bcolors.OKBLUE}({bcolors.ENDC}{score}{bcolors.OKBLUE}, {size}{bcolors.OKBLUE}, {ratio}{bcolors.OKBLUE}, {ratio_30d}{bcolors.OKBLUE}, {last_activity}{bcolors.OKBLUE}, {seeding_time}{bcolors.OKBLUE}){bcolors.ENDC}"
-
-
 def manage_disk_space(torrents):
     total, used, free = shutil.disk_usage("/lts")
 
     limit = total * 0.2
     if free >= limit:
-        logging.info(f"Disk limit -- {bcolors.OKGREEN}{used / (total - limit) * 100:>6.2f}%{bcolors.ENDC} -- {bcolors.OKBLUE}({bcolors.OKCYAN}{(free - limit) / (1024**3):.0f} GiB {bcolors.OKBLUE}remaining){bcolors.ENDC}")
+        remaining = label(f"{(free - limit) / (1024**3):.0f} GiB", "remaining")
+        logging.info(f"Disk limit -- {bcolors.OKGREEN}{used / (total - limit) * 100:>6.2f}%{bcolors.ENDC} -- {brackets(remaining)}")
         return
 
     required = limit - free
@@ -157,7 +167,7 @@ def fetch_metrics():
                 met_torrents_count += 1
                 met_torrents_size += torrent["total_size"]
 
-    logging.info(f"Fetched {len(torrents):>6} torrents  {bcolors.OKBLUE}({bcolors.OKCYAN}{met_torrents_count} {bcolors.OKBLUE}met, {bcolors.OKCYAN}{met_torrents_size / (1024**3):.0f} GiB {bcolors.OKBLUE}reclaimable){bcolors.ENDC}")
+    logging.info(f"Fetched {len(torrents):>6} torrents  {brackets(label(met_torrents_count, 'met'), label(f'{met_torrents_size / (1024**3):.0f} GiB', 'reclaimable'))}")
 
     deltas = {item['metric'].get('hash'): float(item['value'][1]) for item in query_prometheus('torrent_upload_increase_30d')}
 
@@ -168,7 +178,7 @@ def fetch_metrics():
     d7 = len(query_prometheus('torrent_total_upload_bytes offset 7d')) - d30 - d28 - d21 - d14
     d0 = len(query_prometheus('torrent_total_upload_bytes')) - d30 - d28 - d21 - d14 - d7
 
-    logging.info(f"Fetched {len(deltas):>6} deltas    {bcolors.OKBLUE}({bcolors.OKCYAN}{d28} {bcolors.OKBLUE}>28d, {bcolors.OKCYAN}{d21} {bcolors.OKBLUE}>21d, {bcolors.OKCYAN}{d14} {bcolors.OKBLUE}>14d, {bcolors.OKCYAN}{d7} {bcolors.OKBLUE}>7d, {bcolors.OKCYAN}{d0} {bcolors.OKBLUE}<7d){bcolors.ENDC}")
+    logging.info(f"Fetched {len(deltas):>6} deltas    {brackets(label(d28, '>28d'), label(d21, '>21d'), label(d14, '>14d'), label(d7, '>7d'), label(d0, '<7d'))}")
     
     process_torrents(torrents, deltas)
 
