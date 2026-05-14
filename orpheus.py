@@ -158,18 +158,22 @@ def fetch_metrics():
     torrents = []
     met_torrents_count = 0
     met_torrents_size = 0
-    for name, qbt in CLIENTS.items():
-        for torrent in qbt.torrents_info(SIMPLE_RESPONSES=True):
-            torrent["client"] = name
-            torrents.append(torrent)
+    try:
+        for name, qbt in CLIENTS.items():
+            for torrent in qbt.torrents_info(SIMPLE_RESPONSES=True):
+                torrent["client"] = name
+                torrents.append(torrent)
 
-            if "met" in torrent["tags"]:
-                met_torrents_count += 1
-                met_torrents_size += torrent["total_size"]
+                if "met" in torrent["tags"]:
+                    met_torrents_count += 1
+                    met_torrents_size += torrent["total_size"]
+    except Exception as e:
+        logging.error(f"Couldn't reach one of the qbittorrent instances: {e}")
+        return
 
     logging.info(f"Fetched {len(torrents):>6} torrents  {brackets(label(met_torrents_count, 'met'), label(f'{met_torrents_size / (1024**3):.0f} GiB', 'reclaimable'))}")
 
-    deltas = {item['metric'].get('hash'): float(item['value'][1]) for item in query_prometheus('torrent_upload_increase_30d')}
+    deltas = {item['metric'].get('hash'): float(item['value'][1]) for item in query_prometheus('torrent_total_upload_bytes - torrent_total_upload_bytes offset 30d')}
 
     d30 = len(deltas)
     d28 = len(query_prometheus('torrent_total_upload_bytes offset 28d')) - d30
